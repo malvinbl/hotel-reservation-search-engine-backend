@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+      - "8000:8000"
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/hotel
+      JAVA_TOOL_OPTIONS: >-
+        -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8000
+    depends_on:
+      - mongo
+      - akhq
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo:7-jammy
+    container_name: mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - .docker/mongo/:/data/db
+    networks:
+      - app-network
+
+  zookeeper:
+    image: quay.io/strimzi/kafka:0.34.0-kafka-3.4.0
+    container_name: zookeeper
+    command: [
+      "sh", "-c",
+      "bin/zookeeper-server-start.sh config/zookeeper.properties"
+    ]
+    ports:
+      - "2181:2181"
+    environment:
+      LOG_DIR: /tmp/logs
+    networks:
+      - app-network
+
+  kafka:
+    image: quay.io/strimzi/kafka:0.34.0-kafka-3.4.0
+    container_name: kafka
+    command: [
+      "sh", "-c",
+      "bin/kafka-server-start.sh config/server.properties --override listeners=$${KAFKA_LISTENERS} --override advertised.listeners=$${KAFKA_ADVERTISED_LISTENERS} --override zookeeper.connect=$${KAFKA_ZOOKEEPER_CONNECT}"
+    ]
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    volumes:
+      - ./.docker/kafka/:/home/kafka/
+      - ./.docker/kafka/cache:/tmp/logs
+    environment:
+      LOG_DIR: "/tmp/logs"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    networks:
+      - app-network
+
+  akhq:
+    image: tchiotludo/akhq
+    container_name: akhq
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            docker-kafka-server:
+              properties:
+                bootstrap.servers: "kafka:9092"
+    ports:
+      - "80:8080"
+    links:
+      - kafka
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
