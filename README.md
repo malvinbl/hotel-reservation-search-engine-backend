@@ -120,4 +120,6 @@ Spring Boot v3.5.3
 
 MongoDB Data Base
 
+Junit + Mockito
+
 Kafka
